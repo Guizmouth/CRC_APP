@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from io import BytesIO
 import kaleido
-kaleido.get_chrome()  # Télécharge Chrome si absent
+#kaleido.get_chrome()  # Télécharge Chrome si absent
 kaleido.get_chrome_sync()
 
 
@@ -380,5 +380,6 @@ if st.sidebar.button("Créer le ZIP des PNG par courbe"):
 # --- Tableau résumé ---
 st.subheader("📊 Tableau récapitulatif")
 st.dataframe(df_summary.style.format({"EC50": "{:.2f}"}))
+
 
 
