@@ -2,5 +2,5 @@ streamlit>=1.30
 pandas
 numpy
 scipy
-plotly
-kaleido>=0.2
+plotly==5.15.0
+kaleido==0.2.1
