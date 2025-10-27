@@ -72,15 +72,15 @@ def compute_fit_and_smooth(x_fit_tuple, y_fit_tuple, model, force, smooth_n=200)
 # ============================
 # Page config
 # ============================
-st.set_page_config(page_title="HTRF Dose–Response Interactive", layout="wide")
-st.title("📈 HTRF Dose–Response — interactive")
+st.set_page_config(page_title="📈 Concentration Response Curves Interactive", layout="wide")
+st.title("📈 Concentration Response Curves Interactive")
 
 # ============================
 # Upload flexible CSV/TXT
 # ============================
 uploaded_file = st.sidebar.file_uploader("Importer CSV/TXT", type=["csv", "txt", "csv.gz"])
 if uploaded_file is None:
-    st.sidebar.info("Importe un fichier CSV ou TXT avec colonnes de concentration et composés.")
+    st.sidebar.info("💡 Importe un fichier CSV ou TXT avec colonnes de concentration et composés.")
     st.stop()
 
 # Try multiple separators
@@ -123,9 +123,9 @@ selected = st.sidebar.multiselect("Choisir les composés :", options=compounds, 
 # Sidebar — apparence
 # ============================
 st.sidebar.header("🎨 Apparence & légende")
-chart_title = st.sidebar.text_input("Titre graphique", "HTRF Dose–Response")
+chart_title = st.sidebar.text_input("Titre graphique", "Concentration Response")
 x_axis_title = st.sidebar.text_input("Titre axe X", x_col)
-y_axis_title = st.sidebar.text_input("Titre axe Y", "Signal / %")
+y_axis_title = st.sidebar.text_input("Titre axe Y", "Inhibition (%)")
 global_point_size = st.sidebar.slider("Taille points", 4, 15, 8, key="global_point_size")
 global_line_width = st.sidebar.slider("Épaisseur ligne par défaut", 1, 5, 2, key="global_line_width")
 show_legend = st.sidebar.checkbox("Afficher légende", True)
@@ -273,22 +273,106 @@ for i, comp in enumerate(selected):
                         value=st.session_state.get(f"points_{comp}", True),
                         key=f"points_{comp}")
 
-# ============================
-# Export
-# ============================
+# ===============================
+# EXPORTS (PNG GLOBAL / CSV / PNG PAR COURBE)
+# ===============================
+import zipfile
+from io import BytesIO
+
 st.sidebar.markdown("---")
 st.sidebar.header("💾 Export")
-try:
-    png_buf = BytesIO(fig.to_image(format="png", scale=3))
-    st.sidebar.download_button("Exporter PNG", data=png_buf.getvalue(), file_name="HTRF_interactive.png", mime="image/png")
-except Exception:
-    st.sidebar.info("Export PNG nécessite kaleido (pip install kaleido).")
 
-summary_rows = [{"Composé": c["comp"], "Modèle": c["model"], "EC50": c["ec50"], "Params": c["popt"]} for c in curve_data]
+# Nom de fichier personnalisable
+file_base_name = st.sidebar.text_input("Nom de base pour les fichiers exportés", "CRC")
+
+# --- Export PNG global ---
+try:
+    fig.update_layout(
+        title=dict(text=chart_title, x=0.5, xanchor="center")  # titre centré
+    )
+    png_buf = BytesIO(fig.to_image(format="png", scale=3))
+    st.sidebar.download_button(
+        "🖼️ Exporter PNG global",
+        data=png_buf.getvalue(),
+        file_name=f"{file_base_name}.png",
+        mime="image/png"
+    )
+except Exception:
+    st.sidebar.info("⚠️ L’export PNG global nécessite l’installation de kaleido (`pip install kaleido`).")
+
+# --- Export CSV résumé ---
+summary_rows = [
+    {"Composé": c["comp"], "Modèle": c["model"], "EC50": c["ec50"], "Params": c["popt"]}
+    for c in curve_data
+]
 df_summary = pd.DataFrame(summary_rows)
 csv_buf = BytesIO()
 csv_buf.write(df_summary.to_csv(index=False).encode())
-st.sidebar.download_button("Exporter CSV (résumé)", data=csv_buf.getvalue(), file_name="HTRF_interactive_summary.csv", mime="text/csv")
+st.sidebar.download_button(
+    "📊 Exporter CSV (résumé)",
+    data=csv_buf.getvalue(),
+    file_name=f"{file_base_name}_summary.csv",
+    mime="text/csv"
+)
 
+# --- Export PNG par courbe (ZIP) ---
+st.sidebar.markdown("### 📦 Export PNG par courbe (ZIP)")
+show_legend_export = st.sidebar.checkbox("Afficher la légende dans les PNG exportés", value=True)
+
+if st.sidebar.button("Créer le ZIP des PNG par courbe"):
+    zip_buf = BytesIO()
+    with zipfile.ZipFile(zip_buf, "w") as zf:
+        for c in curve_data:
+            fig_single = go.Figure()
+            show_points = st.session_state.get(f"points_{c['comp']}", True)
+
+            # Points visibles mais sans légende
+            if show_points:
+                fig_single.add_trace(go.Scatter(
+                    x=c["x"], y=c["y"], mode="markers",
+                    error_y=dict(type="data", array=c["y_std"], visible=True, thickness=1, width=4),
+                    marker=dict(color=c["color"], size=global_point_size),
+                    name="",  # pas de nom → pas de "trace 1"
+                    showlegend=False
+                ))
+
+            # Ligne du fit
+            label = f"{c['comp']}"
+            if c.get("show_fit_label", True) and c["model"]:
+                label += f" ({c['model']})"
+            if c.get("show_ec50_label", True) and c["ec50"] is not None:
+                label += f" EC50={c['ec50']:.2f} µM"
+
+            fig_single.add_trace(go.Scatter(
+                x=c["x_smooth"], y=c["y_smooth"], mode="lines",
+                line=dict(color=c["color"], width=c["width"]),
+                name=label if show_legend_export else "",
+                showlegend=show_legend_export
+            ))
+
+            fig_single.update_layout(
+                template="plotly_white",
+                title=dict(text=f"{c['comp']}", x=0.5, xanchor="center"),  # titre centré
+                xaxis_title=x_axis_title,
+                yaxis_title=y_axis_title,
+                xaxis_type="log",
+                width=900,
+                height=600,
+                showlegend=show_legend_export
+            )
+
+            safe_name = f"{c['comp'].replace(' ', '_').replace('/', '_')}.png"
+            png_bytes = fig_single.to_image(format="png", scale=3)
+            zf.writestr(safe_name, png_bytes)
+
+    zip_buf.seek(0)
+    st.sidebar.download_button(
+        "⬇️ Télécharger le ZIP des courbes",
+        data=zip_buf,
+        file_name=f"{file_base_name}_batch.zip",
+        mime="application/zip"
+    )
+
+# --- Tableau résumé ---
 st.subheader("📊 Tableau récapitulatif")
 st.dataframe(df_summary.style.format({"EC50": "{:.2f}"}))
