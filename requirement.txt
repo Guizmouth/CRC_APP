@@ -1,6 +1,6 @@
 streamlit>=1.30
-pandas
-numpy
-plotly
-kaleido
+pandas>=2.0
+numpy>=1.25
 scipy>=1.11
+plotly>=5.15
+kaleido>=0.2
