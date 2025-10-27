@@ -1,6 +1,6 @@
 streamlit>=1.30
 pandas
 numpy
-scipy
+scipy>=1.11
 plotly
 kaleido
