@@ -79,34 +79,61 @@ def compute_fit_and_smooth(x_fit_tuple, y_fit_tuple, model, force, smooth_n=200)
 st.set_page_config(page_title="📈 Concentration Response Curves Interactive", layout="wide")
 st.title("📈 Concentration Response Curves Interactive")
 
+import streamlit as st
+import pandas as pd
+import numpy as np
+import chardet
+import csv
+
 # ============================
-# Upload flexible CSV/TXT
+# Upload intelligent CSV/TXT
 # ============================
 uploaded_file = st.sidebar.file_uploader("Importer CSV/TXT", type=["csv", "txt", "csv.gz"])
+
 if uploaded_file is None:
     st.sidebar.info("💡 Importe un fichier CSV ou TXT avec colonnes de concentration et composés.")
     st.stop()
 
-# Try multiple separators and encodings
-separators = [',', ';', '\t']
-encodings = ['utf-8', 'utf-8-sig', 'latin1', 'utf-16']
+# Lire quelques octets pour détecter encodage et séparateur
+raw_data = uploaded_file.read()
+uploaded_file.seek(0)  # remettre le curseur au début pour pandas
 
-df = None
-for enc in encodings:
-    for sep in separators:
-        try:
-            df_try = pd.read_csv(uploaded_file, sep=sep, encoding=enc, engine='python')
-            numeric_cols = df_try.select_dtypes(include=[np.number]).columns.tolist()
-            if numeric_cols:
-                df = df_try
-                break
-        except Exception:
-            continue
-    if df is not None:
-        break
+# 🔍 Détection automatique de l'encodage
+enc_result = chardet.detect(raw_data)
+encoding = enc_result["encoding"] or "utf-8"
 
-if df is None:
-    st.sidebar.error("Impossible de lire le fichier. Vérifie qu'il est bien un CSV ou TXT avec séparateur ',' ';' ou tabulation.")
+# 🔍 Détection automatique du séparateur
+sample = raw_data.decode(encoding, errors="ignore")[:5000]  # lire un extrait
+try:
+    dialect = csv.Sniffer().sniff(sample, delimiters=[",", ";", "\t"])
+    sep = dialect.delimiter
+except Exception:
+    sep = ","  # défaut
+
+# Réessayer la lecture complète
+try:
+    df = pd.read_csv(uploaded_file, sep=sep, encoding=encoding, engine="python")
+except Exception as e:
+    st.sidebar.error(f"❌ Impossible de lire le fichier ({e}).")
+    st.stop()
+
+# Vérification basique du contenu
+numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+if not numeric_cols:
+    st.sidebar.error("Aucune colonne numérique détectée.")
+    st.stop()
+
+st.sidebar.success(f"✅ Fichier lu avec encodage '{encoding}' et séparateur '{sep}'")
+
+# ============================
+# Sélection colonnes
+# ============================
+default_x_col = "[Cpd] µM" if "[Cpd] µM" in numeric_cols else numeric_cols[0]
+x_col = st.sidebar.selectbox("Colonne concentration (abscisse)", options=numeric_cols, index=numeric_cols.index(default_x_col))
+
+compounds = [c for c in df.columns if c != x_col]
+if not compounds:
+    st.sidebar.error("Aucune colonne de composé détectée.")
     st.stop()
 
 # ============================
@@ -372,6 +399,7 @@ if st.sidebar.button("Créer le ZIP des PNG par courbe"):
 # --- Tableau résumé ---
 st.subheader("📊 Tableau récapitulatif")
 st.dataframe(df_summary.style.format({"EC50": "{:.2f}"}))
+
 
 
 
