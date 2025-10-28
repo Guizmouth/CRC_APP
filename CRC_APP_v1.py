@@ -87,34 +87,26 @@ if uploaded_file is None:
     st.sidebar.info("💡 Importe un fichier CSV ou TXT avec colonnes de concentration et composés.")
     st.stop()
 
-# Try multiple separators
+# Try multiple separators and encodings
 separators = [',', ';', '\t']
+encodings = ['utf-8', 'utf-8-sig', 'latin1', 'utf-16']
+
 df = None
-for sep in separators:
-    try:
-        df_try = pd.read_csv(uploaded_file, sep=sep, engine='python')
-        numeric_cols = df_try.select_dtypes(include=[np.number]).columns.tolist()
-        if numeric_cols:
-            df = df_try
-            break
-    except Exception:
-        continue
+for enc in encodings:
+    for sep in separators:
+        try:
+            df_try = pd.read_csv(uploaded_file, sep=sep, encoding=enc, engine='python')
+            numeric_cols = df_try.select_dtypes(include=[np.number]).columns.tolist()
+            if numeric_cols:
+                df = df_try
+                break
+        except Exception:
+            continue
+    if df is not None:
+        break
 
 if df is None:
     st.sidebar.error("Impossible de lire le fichier. Vérifie qu'il est bien un CSV ou TXT avec séparateur ',' ';' ou tabulation.")
-    st.stop()
-
-numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-if not numeric_cols:
-    st.sidebar.error("Aucune colonne numérique détectée.")
-    st.stop()
-
-default_x_col = "[Cpd] µM" if "[Cpd] µM" in numeric_cols else numeric_cols[0]
-x_col = st.sidebar.selectbox("Colonne concentration (abscisse)", options=numeric_cols, index=numeric_cols.index(default_x_col))
-
-compounds = [c for c in df.columns if c != x_col]
-if not compounds:
-    st.sidebar.error("Aucune colonne de composé détectée.")
     st.stop()
 
 # ============================
@@ -380,6 +372,7 @@ if st.sidebar.button("Créer le ZIP des PNG par courbe"):
 # --- Tableau résumé ---
 st.subheader("📊 Tableau récapitulatif")
 st.dataframe(df_summary.style.format({"EC50": "{:.2f}"}))
+
 
 
 
